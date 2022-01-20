@@ -1,5 +1,5 @@
 name := "SparkColumnSwapper"
-version := "1.1beta"
+version := "1.2patch-beta"
 
 scalaVersion := "2.11.12"
 

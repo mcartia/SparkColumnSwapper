@@ -10,12 +10,12 @@ import scala.util.{Failure, Success, Try}
 
 object ArrayElemSwapperJob {
 
-  val logger = LoggerFactory.getLogger(ColumnSwapperJob.getClass)
+  val logger = LoggerFactory.getLogger(ArrayElemSwapperJob.getClass)
 
   def main(args: Array[String]): Unit = {
 
     if (args.length < 2) {
-      logger.error("Usage "+ArrayElemSwapperJob.getClass.getName+" configFile inPath outPath [format] [compression]...")
+      logger.error("Usage "+ArrayElemSwapperJob.getClass.getName+" configFile inPath outPath [partitionColumn] [format] [compression]...")
       System.exit(0);
     }
     val cfgFile = Source.fromFile(args(0)).getLines.filter(f => !f.trim.isEmpty)
@@ -26,15 +26,19 @@ object ArrayElemSwapperJob {
     val outPath = args(2)
     logger.info("Output path: "+outPath)
 
-    val fileFormat = Try(args(3)).getOrElse("parquet")
+    val partitionColumn = Try(args(3)).getOrElse("")
+    logger.info("Partition column: "+partitionColumn)
+
+    val fileFormat = Try(args(4)).getOrElse("parquet")
     logger.info("File format: "+fileFormat)
-    val compression = Try(args(4)).getOrElse("snappy")
+
+    val compression = Try(args(5)).getOrElse("snappy")
     logger.info("Compression: "+compression)
 
     val spark = SparkSession.builder.appName("ColumnSwapper").getOrCreate()
     spark.sparkContext.setLogLevel("WARN")
 
-    val swapArrayElemUDF = udf( (colName: String, arr: mutable.WrappedArray[Int]) => swapArrayElem(colName,arr,colMappings) )
+    val swapArrayElemUDF = udf( (colName: String, arr: mutable.WrappedArray[AnyVal]) => swapArrayElem(colName,arr,colMappings) )
 
     val srcDF = spark.read.format(fileFormat).option("header", "true").load(inPath).cache
     logger.info("Original columns sample:")
@@ -48,7 +52,14 @@ object ArrayElemSwapperJob {
         .drop(x + "_tmp")
     })
 
-    Try(outDF.write.format(fileFormat).option("compression", compression).save(outPath)) match {
+    var outDFWriter = outDF.write.format(fileFormat).option("compression", compression)
+
+    if (partitionColumn.length>0) {
+      logger.info("Partitioning by: "+partitionColumn)
+      outDFWriter = outDFWriter.partitionBy(partitionColumn)
+    }
+
+    Try(outDFWriter.save(outPath)) match {
       case Success(i) => {
         logger.info("Final columns sample:")
         outDF.select(colMappings.keys.toList.map(col):_*).limit(5).show
@@ -58,14 +69,14 @@ object ArrayElemSwapperJob {
     }
   }
 
-  def swapArrayElem(colName: String, arr: mutable.WrappedArray[Int], cfg: Map[String,String]): mutable.WrappedArray[Int] = {
+  def swapArrayElem(colName: String, arr: mutable.WrappedArray[AnyVal], cfg: Map[String,String]): mutable.WrappedArray[AnyVal] = {
     //get configuration for column to swap
     val columnConf = cfg.get(colName).get
     //convert from String (csv) to Array[Int]
     val swappedOrder = columnConf.split(",").map(_.toInt).toArray
     //check if original array size matches with swapped array size from configuration (else return original array)
     if (arr.length == swappedOrder.size) {
-      var outArr = Array[Int]()
+      var outArr = Array[AnyVal]()
       //create new array with ordering read from configuration
       (0 to arr.length-1).foreach( x => {
         outArr = outArr :+ arr(swappedOrder(x))
