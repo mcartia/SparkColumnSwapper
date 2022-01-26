@@ -13,7 +13,7 @@ object ColumnSwapperJob {
 
   def main(args: Array[String]): Unit = {
 
-    if (args.length < 2) {
+    if (args.length < 3) {
       logger.error("Usage "+ColumnSwapperJob.getClass.getName+" configFile inPath outPath [format] [compression]...")
       System.exit(0);
     }

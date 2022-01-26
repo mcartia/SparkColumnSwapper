@@ -14,7 +14,7 @@ object ArrayElemSwapperJob {
 
   def main(args: Array[String]): Unit = {
 
-    if (args.length < 2) {
+    if (args.length < 3) {
       logger.error("Usage "+ArrayElemSwapperJob.getClass.getName+" configFile inPath outPath [partitionColumn] [format] [compression]...")
       System.exit(0);
     }
@@ -38,11 +38,11 @@ object ArrayElemSwapperJob {
     val spark = SparkSession.builder.appName("ColumnSwapper").getOrCreate()
     spark.sparkContext.setLogLevel("WARN")
 
-    val swapArrayElemUDF = udf( (colName: String, arr: mutable.WrappedArray[AnyVal]) => swapArrayElem(colName,arr,colMappings) )
-
     val srcDF = spark.read.format(fileFormat).option("header", "true").load(inPath).cache
     logger.info("Original columns sample:")
     srcDF.select(colMappings.keys.toList.map(col):_*).limit(5).show
+
+    val swapArrayElemUDF = udf( (colName: String, arr: mutable.WrappedArray[Long]) => swapArrayElem(colName,arr,colMappings) )
 
     var outDF = srcDF
     colMappings.map(x=>x._1).foreach(x => {
@@ -69,14 +69,14 @@ object ArrayElemSwapperJob {
     }
   }
 
-  def swapArrayElem(colName: String, arr: mutable.WrappedArray[AnyVal], cfg: Map[String,String]): mutable.WrappedArray[AnyVal] = {
+  def swapArrayElem(colName: String, arr: mutable.WrappedArray[Long], cfg: Map[String,String]): mutable.WrappedArray[Long] = {
     //get configuration for column to swap
     val columnConf = cfg.get(colName).get
     //convert from String (csv) to Array[Int]
     val swappedOrder = columnConf.split(",").map(_.toInt).toArray
     //check if original array size matches with swapped array size from configuration (else return original array)
     if (arr.length == swappedOrder.size) {
-      var outArr = Array[AnyVal]()
+      var outArr = Array[Long]()
       //create new array with ordering read from configuration
       (0 to arr.length-1).foreach( x => {
         outArr = outArr :+ arr(swappedOrder(x))
